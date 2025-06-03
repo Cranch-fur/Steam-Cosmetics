@@ -232,7 +232,7 @@ namespace SteamCosmetics
             if (File.Exists("bhvrSession.txt") == false)
                 CriticalError("\"bhvrSession.txt\" file is missing!");
 
-            string bhvrSessionFileContents = File.ReadAllText("bhvrSession.txt");
+            string bhvrSessionFileContents = File.ReadAllText("bhvrSession.txt").Replace("bhvrSession=", string.Empty);
             if (string.IsNullOrEmpty(bhvrSessionFileContents))
                 CriticalError("\"bhvrSession.txt\" file is empty!");
 
