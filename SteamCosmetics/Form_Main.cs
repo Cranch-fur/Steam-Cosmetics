@@ -105,7 +105,7 @@ namespace SteamCosmetics
         }
         private void UpdateSelectedCharacterPreview()
         {
-            pictureBox_CharacterPortrait.Image = Image.FromFile((string)jsonCharactersMap[characterSelectSelectedCharacterId]["charPortrait"]);
+            pictureBox_CharacterPortrait.Image = Image.FromFile(Path.Combine("Data\\CharPortraits", (string)jsonCharactersMap[characterSelectSelectedCharacterId]["charPortrait"]));
 
             S_CustomizationPreset equipedCosmetics = GetEquipedCosmetics(characterSelectSelectedCharacterId);
             textBox_Head.Text = equipedCosmetics.head;
