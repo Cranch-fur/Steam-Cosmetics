@@ -98,27 +98,56 @@ namespace SteamCosmetics
 
         private void InitializeBhvrSession()
         {
-            if (File.Exists("bhvrSession.txt") == false)
-                CriticalError("\"bhvrSession.txt\" file is missing!");
+            bool bhvrSessionValid = false;
 
-            string bhvrSessionFileContents = File.ReadAllText("bhvrSession.txt")
-                .Replace("Cookie: ", string.Empty)
-                .Replace("bhvrSession=", string.Empty);
-
-            if (string.IsNullOrEmpty(bhvrSessionFileContents))
-                CriticalError("\"bhvrSession.txt\" file is empty!");
-
-
-            List<string> headers = new List<string>
+            if (File.Exists("bhvrSession.txt"))
             {
-                $"Cookie: bhvrSession={bhvrSessionFileContents}"
-            };
-            var gameConfigResponse = Networking.Get("https://steam.live.bhvrdbd.com/api/v1/config", headers);
-            if (gameConfigResponse.statusCode != Networking.E_StatusCode.OK)
+                string bhvrSessionFileContents = File.ReadAllText("bhvrSession.txt")
+                    .Replace("Cookie: ", string.Empty)
+                    .Replace("bhvrSession=", string.Empty);
+
+
+                if (string.IsNullOrEmpty(bhvrSessionFileContents) == false)
+                {
+                    List<string> headers = new List<string>
+                    {
+                        $"Cookie: bhvrSession={bhvrSessionFileContents}"
+                    };
+
+                    var gameConfigResponse = Networking.Get("https://steam.live.bhvrdbd.com/api/v1/config", headers);
+                    if (gameConfigResponse.statusCode == Networking.E_StatusCode.OK)
+                    {
+                        bhvrSessionValid = true;
+                        SetBhvrSession(bhvrSessionFileContents);
+                    }
+                }
+            }
+
+            if (bhvrSessionValid == false)
+            {
+                string bhvrSessionClipboard = Clipboard.GetText()
+                    .Replace("Cookie: ", string.Empty)
+                    .Replace("bhvrSession=", string.Empty);
+
+
+                if (bhvrSessionClipboard.Length > 255)
+                {
+                    List<string> headers = new List<string>
+                    {
+                        $"Cookie: bhvrSession={bhvrSessionClipboard}"
+                    };
+
+                    var gameConfigResponse = Networking.Get("https://steam.live.bhvrdbd.com/api/v1/config", headers);
+                    if (gameConfigResponse.statusCode == Networking.E_StatusCode.OK)
+                    {
+                        bhvrSessionValid = true;
+                        SetBhvrSession(bhvrSessionClipboard);
+                    }
+                }
+            }
+
+            if (bhvrSessionValid == false)
                 CriticalError("bhvrSession is invalid or game server are down!");
-
-
-            SetBhvrSession(bhvrSessionFileContents);
         }
 
 
@@ -158,48 +187,85 @@ namespace SteamCosmetics
 
             return new S_CosmeticsPreset(null, null, null);
         }
-        private void SetEquipedCosmetics(string characterId, S_CosmeticsPreset newPreset, bool commitChanges = false)
+        private void SetEquipedCosmetics(string characterId, S_CosmeticsPreset newPreset)
         {
             JObject fullProfileContent = GetFullProfileContent();
             int loadoutSlot = GetSelectedLoadoutSlot();
 
-
-            JToken charactersCustomizationPresets = fullProfileContent["characterCustomizationPresets"];
+            JArray customizationPresets = (JArray)fullProfileContent["characterCustomizationPresets"];
+            bool characterWasFound = false;
             bool changesHasBeenMade = false;
-            foreach (var customizationPreset in charactersCustomizationPresets)
+            foreach (JToken preset in customizationPresets)
             {
-                if ((string)customizationPreset["characterId"] == characterId)
+                if ((string)preset["characterId"] == characterId)
                 {
-                    JToken customizations = customizationPreset["presets"][loadoutSlot];
-                    customizations["head"] = newPreset.head;
-                    customizations["torsoOrBody"] = newPreset.torsoOrBody;
-                    customizations["legsOrWeapon"] = newPreset.legsOrWeapon;
+                    JToken customizations = preset["presets"][loadoutSlot];
+                    customizations["head"] = string.IsNullOrEmpty(newPreset.head) ? "NONE" : newPreset.head;
+                    customizations["torsoOrBody"] = string.IsNullOrEmpty(newPreset.torsoOrBody) ? "NONE" : newPreset.torsoOrBody;
+                    customizations["legsOrWeapon"] = string.IsNullOrEmpty(newPreset.legsOrWeapon) ? "NONE" : newPreset.legsOrWeapon;
 
+                    characterWasFound = true;
                     changesHasBeenMade = true;
                     break;
                 }
             }
 
-            if (changesHasBeenMade)
+
+            if (characterWasFound == false)
             {
-                SetFullProfileContent(fullProfileContent);
+                try
+                {
+                    JObject newPresetsEntry = new JObject
+                                                  (
+                                                      new JProperty("characterId", GetSelectedCharacterId()),
+                                                      new JProperty("activePreset", 0),
+                                                      new JProperty("presets", new JArray
+                                                      (
+                                                          new JObject
+                                                          (
+                                                              new JProperty("head", "NONE"),
+                                                              new JProperty("torsoOrBody", "NONE"),
+                                                              new JProperty("legsOrWeapon", "NONE"),
+                                                              new JProperty("charms", new JArray())
+                                                          ),
+                                                          new JObject
+                                                          (
+                                                              new JProperty("head", "NONE"),
+                                                              new JProperty("torsoOrBody", "NONE"),
+                                                              new JProperty("legsOrWeapon", "NONE"),
+                                                              new JProperty("charms", new JArray())
+                                                          ),
+                                                          new JObject
+                                                          (
+                                                              new JProperty("head", "NONE"),
+                                                              new JProperty("torsoOrBody", "NONE"),
+                                                              new JProperty("legsOrWeapon", "NONE"),
+                                                              new JProperty("charms", new JArray())
+                                                          )
+                                                      )
+                                                  ));
+
+                    for (int i = 0; i <= 2; i++)
+                    {
+                        JToken customizations = newPresetsEntry["presets"][i];
+                        customizations["head"] = string.IsNullOrEmpty(newPreset.head) ? "NONE" : newPreset.head;
+                        customizations["torsoOrBody"] = string.IsNullOrEmpty(newPreset.torsoOrBody) ? "NONE" : newPreset.torsoOrBody;
+                        customizations["legsOrWeapon"] = string.IsNullOrEmpty(newPreset.legsOrWeapon) ? "NONE" : newPreset.legsOrWeapon;
+                    }
+
+                    customizationPresets.Add(newPresetsEntry);
+                    changesHasBeenMade = true;
+                }
+                catch 
+                {
+                    CriticalError("Application failed to add new character customization preset!");
+                }
             }
 
 
-            if (commitChanges == true)
+            if (changesHasBeenMade)
             {
-                if (FullProfile.Set(GetBhvrSession(), GetFullProfile()) == false)
-                {
-                    CriticalError("Failed to upload a new fullProfile!");
-                }
-                else
-                {
-                    SoundPlayer soundPlayer = new SoundPlayer();
-                    soundPlayer.Stream = Properties.Resources.SFX_Activate;
-                    soundPlayer.Play();
-
-                    SetFullProfileVersion(GetFullProfileVersion() + 1);
-                }
+                SetFullProfileContent(fullProfileContent);
             }
         }
 
@@ -222,11 +288,22 @@ namespace SteamCosmetics
 
         private void UpdateEquipedCosmetics()
         {
-            SetEquipedCosmetics(GetSelectedCharacterId(), new S_CosmeticsPreset(textBox_Head.Text, textBox_TorsoBody.Text, textBox_LegsWeapon.Text), false);
+            SetEquipedCosmetics(GetSelectedCharacterId(), new S_CosmeticsPreset(textBox_Head.Text, textBox_TorsoBody.Text, textBox_LegsWeapon.Text));
         }
-        private void CommitEquipedCosmetics()
+        private void CommitChanges()
         {
-            SetEquipedCosmetics(GetSelectedCharacterId(), new S_CosmeticsPreset(textBox_Head.Text, textBox_TorsoBody.Text, textBox_LegsWeapon.Text), true);
+            if (FullProfile.Set(GetBhvrSession(), GetFullProfile()) == false)
+            {
+                CriticalError("Failed to upload a new fullProfile!");
+            }
+            else
+            {
+                SoundPlayer soundPlayer = new SoundPlayer();
+                soundPlayer.Stream = Properties.Resources.SFX_Activate;
+                soundPlayer.Play();
+
+                SetFullProfileVersion(GetFullProfileVersion() + 1);
+            }
         }
 
 
@@ -302,7 +379,8 @@ namespace SteamCosmetics
 
         private void button_Update_MouseClick(object sender, MouseEventArgs e)
         {
-            CommitEquipedCosmetics();
+            UpdateEquipedCosmetics();
+            CommitChanges();
         }
         private void button_LoadBackup_MouseClick(object sender, MouseEventArgs e)
         {
@@ -384,7 +462,7 @@ namespace SteamCosmetics
         }
         public static void SetBhvrSession(string newBhvrSession)
         {
-            bhvrSession = newBhvrSession.Replace("bhvrSession=", string.Empty);
+            bhvrSession = newBhvrSession;
         }
 
 
@@ -469,6 +547,8 @@ namespace SteamCosmetics
         {
             charactersMap = newCharactersMap;
         }
+
+
 
 
         public static Dictionary<int, string> characterSelectComboBoxMappings = new Dictionary<int, string>();
