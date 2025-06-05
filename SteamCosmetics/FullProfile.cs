@@ -1,5 +1,6 @@
 ﻿using CranchyLib.Networking;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
+using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Utilities.Zlib;
 using System;
 using System.Collections.Generic;
@@ -11,23 +12,24 @@ namespace SteamCosmetics
 {
     public static class FullProfile
     {
+        private const string SAVEFILE_AESKEY = "5BCC2D6A95D4DF04A005504E59A9B36E"; // HEX Format
+        private const string SAVEFILE_INNER = "DbdDAQEB";
+        private const string SAVEFILE_OUTER = "DbdDAgAC";
+
+
+
+
         public struct S_Profile
         {
-            public string content;
+            public JObject content;
             public int version;
 
-            public S_Profile(string content, int version)
+            public S_Profile(JObject content, int version)
             {
                 this.content = content;
                 this.version = version;
             }
         }
-
-
-
-        private const string SAVEFILE_AESKEY = "5BCC2D6A95D4DF04A005504E59A9B36E"; // HEX Format
-        private const string SAVEFILE_INNER = "DbdDAQEB";
-        private const string SAVEFILE_OUTER = "DbdDAgAC";
 
 
 
@@ -53,6 +55,8 @@ namespace SteamCosmetics
             Buffer.BlockCopy(buffer, 0, result, numberBytes.Length, buffer.Length);
             return result;
         }
+
+
         private static byte[] ReadToEnd(Stream stream)
         {
             if (stream.CanSeek) stream.Position = 0;
@@ -80,7 +84,9 @@ namespace SteamCosmetics
                 return Encoding.UTF8.GetString(decryptedBytes, 0, length);
             }
         }
-        private static string Decrypt(string input)
+
+
+        public static string Decrypt(string input)
         {
             string decryptedInput = RawDecrypt(input.Substring(8).Trim());
             var savefileAscii = new StringBuilder();
@@ -125,7 +131,9 @@ namespace SteamCosmetics
                 return Convert.ToBase64String(memoryStream.ToArray());
             }
         }
-        private static string Encrypt(string input)
+
+
+        public static string Encrypt(string input)
         {
             byte[] inputBytes = Encoding.Unicode.GetBytes(input);
 
@@ -182,17 +190,20 @@ namespace SteamCosmetics
 
             foreach (string responseHeader in fullProfileResponse.headers)
             {
-                if (responseHeader.StartsWith("Kraken-State-Version:"))
+                if (responseHeader.StartsWith("Kraken-State-Version:") && decryptedFullProfile.IsJson())
                 {
-                    return new S_Profile(decryptedFullProfile, Convert.ToInt32(responseHeader.Split(' ')[1]));
+                    return new S_Profile(JObject.Parse(decryptedFullProfile), Convert.ToInt32(responseHeader.Split(' ')[1]));
                 }
             }
 
             return new S_Profile(null, -1);
         }
-        public static bool Set(string bhvrSession, string fullProfile, int version)
+
+
+        public static bool Set(string bhvrSession, S_Profile fullProfile)
         {
-            string encryptedFullProfile = Encrypt(fullProfile);
+            string encryptedFullProfile = Encrypt(fullProfile.content.ToString());
+
 
             List<string> headers = new List<string>()
             {
@@ -200,17 +211,16 @@ namespace SteamCosmetics
                 "Content-Type: application/octet-stream",
                 "Accept-Encoding: gzip, deflate"
             };
-
-            var fullProfileResponse = Networking.Post($"https://steam.live.bhvrdbd.com/api/v1/players/me/states/binary?schemaVersion=0&stateName=FullProfile&version={version}", headers, encryptedFullProfile);
+            var fullProfileResponse = Networking.Post($"https://steam.live.bhvrdbd.com/api/v1/players/me/states/binary?schemaVersion=0&stateName=FullProfile&version={fullProfile.version}", headers, encryptedFullProfile);
             if (fullProfileResponse.statusCode != Networking.E_StatusCode.OK)
             {
                 return false;
             }
-
             if (fullProfileResponse.content.IsJson() == false)
             {
                 return false;
             }
+
 
             return true;
         }
